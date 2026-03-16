@@ -44,7 +44,7 @@ jobs:
           pip install --upgrade pip
           pip install buildozer==1.5.0 cython==0.29.37 virtualenv
 
-      - name: Set up Android SDK with license acceptance
+      - name: Set up Android SDK
         run: |
           ANDROID_SDK_ROOT="$HOME/.android/sdk"
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
@@ -57,13 +57,28 @@ jobs:
 
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
 
+          # Accept all licenses
           yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
 
+          # Install required components
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platform-tools" \
             "build-tools;33.0.2" \
             "platforms;android-33" \
             "ndk;25.2.9519653"
+
+          # ── KEY FIX ──────────────────────────────────────────────────
+          # Buildozer looks for sdkmanager at tools/bin/sdkmanager (old path).
+          # Create that path as a symlink to the modern cmdline-tools binary.
+          mkdir -p "$ANDROID_SDK_ROOT/tools/bin"
+          ln -sfn "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "$ANDROID_SDK_ROOT/tools/bin/sdkmanager"
+          ln -sfn "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" \
+            "$ANDROID_SDK_ROOT/tools/bin/avdmanager"
+          # Also symlink the entire tools/lib for any other old-path lookups
+          ln -sfn "$ANDROID_SDK_ROOT/cmdline-tools/latest/lib" \
+            "$ANDROID_SDK_ROOT/tools/lib" || true
+          # ─────────────────────────────────────────────────────────────
 
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
@@ -74,11 +89,9 @@ jobs:
       - name: Point buildozer at pre-installed SDK/NDK
         run: |
           ANDROID_SDK_ROOT="$HOME/.android/sdk"
-
-          # Symlink our SDK into buildozer's expected location
-          # The symlink means both paths ARE the same directory,
-          # so licenses are already shared — no cp needed
           mkdir -p "$HOME/.buildozer/android/platform"
+
+          # Symlink SDK and NDK into buildozer's expected locations
           ln -sfn "$ANDROID_SDK_ROOT" \
             "$HOME/.buildozer/android/platform/android-sdk"
           ln -sfn "$ANDROID_SDK_ROOT/ndk/25.2.9519653" \
@@ -95,9 +108,9 @@ jobs:
           path: |
             ~/.buildozer/cache
             ~/.android/sdk
-          key: buildozer-v5-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-v6-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-v5-${{ runner.os }}-
+            buildozer-v6-${{ runner.os }}-
 
       - name: Cache pip packages
         uses: actions/cache@v4
