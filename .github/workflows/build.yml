@@ -5,30 +5,27 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:   # allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
-      # ── 1. Checkout your code ──────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python ───────────────────────────────────────────────
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      # ── 3. Install system dependencies ────────────────────────────────
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
-            git zip unzip \
+            git zip unzip wget \
             openjdk-17-jdk \
             autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev \
@@ -37,54 +34,87 @@ jobs:
             libsdl2-dev libsdl2-image-dev \
             libsdl2-mixer-dev libsdl2-ttf-dev
 
-      # ── 4. Set JAVA_HOME ──────────────────────────────────────────────
       - name: Set JAVA_HOME
         run: |
           echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
           echo "/usr/lib/jvm/java-17-openjdk-amd64/bin" >> $GITHUB_PATH
 
-      # ── 5. Install Python build tools ─────────────────────────────────
       - name: Install buildozer and cython
         run: |
           pip install --upgrade pip
           pip install buildozer==1.5.0 cython==0.29.37 virtualenv
 
-      # ── 6. Pre-accept all Android SDK licenses ────────────────────────
-      # This is the key step — without it sdkmanager skips everything
-      - name: Accept Android SDK licenses
+      - name: Set up Android SDK with license acceptance
         run: |
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
-          # Download the newer cmdline-tools so sdkmanager works properly
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+          ANDROID_SDK_ROOT="$HOME/.android/sdk"
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+
+          # Download MODERN cmdline-tools (v11) — old v2 can't auto-accept licenses
+          wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" \
             -O /tmp/cmdline-tools.zip
-          mkdir -p ~/.android/sdk/cmdline-tools
-          unzip -q /tmp/cmdline-tools.zip -d ~/.android/sdk/cmdline-tools
-          mv ~/.android/sdk/cmdline-tools/cmdline-tools \
-             ~/.android/sdk/cmdline-tools/latest
-          export ANDROID_SDK_ROOT=~/.android/sdk
-          export PATH=$PATH:~/.android/sdk/cmdline-tools/latest/bin
-          # Accept all licenses non-interactively
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
-          # Install required SDK components
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdtools
+          mv /tmp/cmdtools/cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          rm -rf /tmp/cmdtools /tmp/cmdline-tools.zip
+
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+
+          # Accept ALL licenses non-interactively
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses || true
+
+          # Install exact SDK components buildozer needs
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platform-tools" \
             "build-tools;33.0.2" \
-            "platforms;android-33"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "~/.android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "~/.android/sdk/platform-tools" >> $GITHUB_PATH
+            "platforms;android-33" \
+            "ndk;25.2.9519653"
 
-      # ── 7. Cache Android SDK / NDK / p4a (speeds up repeat builds) ───
-      - name: Cache buildozer global directory
+          # Write license hash files directly (belt-and-suspenders)
+          mkdir -p "$ANDROID_SDK_ROOT/licenses"
+          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n84831b9409646a918e30573bab4c9c91346d8abd' \
+            > "$ANDROID_SDK_ROOT/licenses/android-sdk-license"
+          printf '\nd975f751698a77b662f1254ddbeed3901e976f5a' \
+            > "$ANDROID_SDK_ROOT/licenses/android-sdk-preview-license"
+          printf '\n33b6ad73ea048d60db01ef8c9e5a0600e11d1cb0' \
+            > "$ANDROID_SDK_ROOT/licenses/android-googletv-license"
+
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/build-tools/33.0.2" >> $GITHUB_PATH
+
+      - name: Point buildozer at pre-installed SDK/NDK
+        run: |
+          ANDROID_SDK_ROOT="$HOME/.android/sdk"
+
+          # Create buildozer platform dir and symlink our SDK into it
+          # so buildozer finds it and skips its own download
+          mkdir -p "$HOME/.buildozer/android/platform"
+          ln -sfn "$ANDROID_SDK_ROOT" \
+            "$HOME/.buildozer/android/platform/android-sdk"
+          ln -sfn "$ANDROID_SDK_ROOT/ndk/25.2.9519653" \
+            "$HOME/.buildozer/android/platform/android-ndk-r25b"
+
+          # Copy license files to buildozer's SDK location too
+          mkdir -p "$HOME/.buildozer/android/platform/android-sdk/licenses"
+          cp "$ANDROID_SDK_ROOT/licenses/"* \
+            "$HOME/.buildozer/android/platform/android-sdk/licenses/"
+
+          # Set env vars buildozer reads
+          echo "ANDROIDSDK=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROIDNDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROIDAPI=33" >> $GITHUB_ENV
+          echo "ANDROIDMINAPI=26" >> $GITHUB_ENV
+
+      - name: Cache buildozer and SDK
         uses: actions/cache@v4
         with:
           path: |
-            ~/.buildozer
+            ~/.buildozer/cache
             ~/.android/sdk
-          key: buildozer-sdk-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-v4-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-sdk-${{ runner.os }}-
+            buildozer-v4-${{ runner.os }}-
 
       - name: Cache pip packages
         uses: actions/cache@v4
@@ -94,12 +124,10 @@ jobs:
           restore-keys: |
             pip-${{ runner.os }}-
 
-      # ── 7. Build the APK ──────────────────────────────────────────────
       - name: Build debug APK
         run: |
           buildozer -v android debug 2>&1 | tee build.log
 
-      # ── 8. Upload APK as artifact ─────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         if: success()
@@ -108,7 +136,6 @@ jobs:
           path: bin/*.apk
           retention-days: 30
 
-      # ── 9. Upload build log (even on failure, for debugging) ──────────
       - name: Upload build log
         uses: actions/upload-artifact@v4
         if: always()
