@@ -11,24 +11,22 @@ source.include_exts = py,png,jpg,kv,atlas,txt,json
 version = 1.0.0
 
 # -- Requirements
+# kivymd removed (not used in current UI code)
+# pymupdf uses the 'fitz' recipe name in p4a
 requirements = python3,
     kivy==2.3.0,
-    kivymd,
-    pymupdf,
-    python-docx,
+    pillow,
     numpy,
     scikit-learn,
-    pillow,
+    python-docx,
     certifi,
     charset-normalizer,
     requests,
-    urllib3
+    urllib3,
+    pymupdf
 
 # -- Android permissions
-android.permissions = READ_EXTERNAL_STORAGE,
-    WRITE_EXTERNAL_STORAGE,
-    INTERNET,
-    ACCESS_NETWORK_STATE
+android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,INTERNET,ACCESS_NETWORK_STATE
 
 # -- Android API levels
 android.api = 33
@@ -36,15 +34,11 @@ android.minapi = 26
 android.ndk = 25b
 android.sdk = 33
 
-# -- Architecture
+# -- Architecture (arm64-v8a = modern phones, armeabi-v7a = older)
 android.archs = arm64-v8a
 
 # -- Orientation
 orientation = portrait
-
-# -- Icons / presplash (add your own assets)
-# icon.filename = assets/icon.png
-# presplash.filename = assets/presplash.png
 
 # -- Fullscreen
 fullscreen = 0
@@ -52,9 +46,14 @@ fullscreen = 0
 # -- Android features
 android.features = android.hardware.touchscreen
 
-# -- Build settings
+# -- p4a bootstrap
+p4a.bootstrap = sdl2
 p4a.branch = master
-android.gradle_dependencies = 
+
+# -- Allow backup
+android.allow_backup = True
+
+# -- Build settings
 log_level = 2
 warn_on_root = 1
 
