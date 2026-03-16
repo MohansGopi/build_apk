@@ -1,0 +1,17 @@
+# DocAssist - Python requirements (scikit-learn edition — no PyTorch)
+# Install with: pip install -r requirements.txt
+
+# UI framework
+kivy
+kivymd
+
+# Document parsing
+PyMuPDF     # fitz — PDF extraction + rendering
+python-docx   # DOCX support
+
+# Search engine (replaces sentence-transformers + torch entirely)
+scikit-learn   # TfidfVectorizer, hybrid word+char n-gram index
+numpy
+
+# Utilities
+Pillow
