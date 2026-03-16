@@ -34,6 +34,12 @@ android.minapi = 26
 android.ndk = 25b
 android.sdk = 33
 
+# -- Use stable build-tools (not rc/preview — those require extra license)
+android.build_tools_version = 33.0.2
+
+# -- Point at the SDK we pre-install in CI (ignored on local builds)
+# android.sdk_path = ~/.android/sdk
+
 # -- Architecture (arm64-v8a = modern phones, armeabi-v7a = older)
 android.archs = arm64-v8a
 
@@ -42,9 +48,6 @@ orientation = portrait
 
 # -- Fullscreen
 fullscreen = 0
-
-# -- Android features
-android.features = android.hardware.touchscreen
 
 # -- p4a bootstrap
 p4a.bootstrap = sdl2
